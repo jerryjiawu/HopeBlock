@@ -85,14 +85,34 @@ class Particle:
         particle_images = self.particles if self.particles else particles
         self.screen.blit(particle_images[int(self.age / self.lifespan * (len(particle_images) - 1))], (int(self.position[0]), int(self.position[1])))
 
+class Type:
+    NORMAL = 0
+    FIRE_CHARGE = 1
+    STAR = 2
+    CREEPER = 3
+    BURST = 4
+
+class Effects:
+    NORMAL = 0
+    TRAIL = 1
+    TWINKLE = 2
+
+class Charge:
+    def __init__(self, type:Type, effects:Effects):
+        self.type = type
+        self.effects = effects
+
 class Firework:
-    def __init__(self, screen, x, y, color, size, duration=1):
+    def __init__(self, screen, x, y, color, size, firework_type:Type=Type.NORMAL, effects:Effects=Effects.NORMAL, duration=1, charges=[]):
         self.screen = screen
+        self.charges = charges
         self.position = [x, y]
         self.color = color
         self.size = size
         self.duration = duration
         self.particles = []
+        self.effects = effects
+        self.firework_type = firework_type
         self.age = 0
         self.has_exploded = False
 
@@ -110,12 +130,101 @@ class Firework:
         else:
             if not self.has_exploded:
                 self.has_exploded = True
-                for i in range(100):
-                    angle = random.uniform(0, 2 * 3.14159)
-                    speed = random.uniform(100, 250)
-                    vx = speed * math.cos(angle)
-                    vy = speed * math.sin(angle)
-                    self.particles.append(Particle(self, [self.position[0], self.position[1]], vx, vy, self.size, random.uniform(0.5, 1.5), self.color, gravity=1))
+                amount = 0
+                duration = 1
+                for charge in self.charges:
+                    if charge.type == Type.NORMAL or charge.type == Type.FIRE_CHARGE or charge.type == Type.BURST:
+                        if charge.type == Type.NORMAL:
+                            amount = 100
+                            duration = 1
+                        elif charge.type == Type.FIRE_CHARGE:
+                            amount = 150
+                            duration = 1.5
+                        for i in range(amount):
+                            angle = random.uniform(0, 2 * 3.14159)
+                            speed = random.uniform(100, 250)
+                            vx = speed * math.cos(angle)
+                            vy = speed * math.sin(angle)
+                            self.particles.append(Particle(self, [self.position[0], self.position[1]], vx, vy, self.size, random.uniform(duration - 0.5, duration + 0.5), self.color, gravity=1))
+                    elif charge.type == Type.STAR:
+                        # Star pattern creates 5 distinct rays/points
+                        star_points = 5
+                        particles_per_point = 20
+                        duration = 1.2
+                        
+                        for point in range(star_points):
+                            # Calculate angle for each star point
+                            base_angle = (point * 2 * math.pi / star_points) - math.pi / 2  # Start from top
+                            
+                            for i in range(particles_per_point):
+                                # Create particles in a narrow cone for each star point
+                                angle_spread = 0.3  # Narrow spread for sharp star points
+                                angle = base_angle + random.uniform(-angle_spread, angle_spread)
+                                
+                                # Varying speeds within each ray
+                                speed = random.uniform(150, 300)
+                                vx = speed * math.cos(angle)
+                                vy = speed * math.sin(angle)
+                                
+                                self.particles.append(Particle(self, [self.position[0], self.position[1]], 
+                                                             vx, vy, self.size, 
+                                                             random.uniform(duration - 0.3, duration + 0.3), 
+                                                             self.color, gravity=0.8))
+
+                    elif charge.type == Type.CREEPER:
+                        creeper_outline = [
+                            [1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1],
+                            [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+                            [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+                            [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+                            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                            [0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0],
+                            [0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0],
+                            [0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0],
+                            [0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0],
+                            [0,0,1,0,0,1,1,1,1,1,1,0,0,1,0,0],
+                            [0,0,1,0,0,1,0,0,0,0,1,0,0,1,0,0],
+                            [0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0],
+     
+                        ]
+                        
+                        duration = 1
+                        creeper_color = Colours.GREEN if self.color != Colours.GREEN else Colours.LIME
+                        scale_factor = 12
+
+                        
+                        # Creeper face pattern - shoot particles toward their final positions
+                        for row in range(len(creeper_outline)):
+                            for col in range(len(creeper_outline[row])):
+                                if creeper_outline[row][col] == 1:
+                                    # Calculate where this pixel should end up (relative to center)
+                                    target_x = (col - 8) * scale_factor  # Center the pattern
+                                    target_y = (row - 8) * scale_factor * 1.1
+                                    
+                                    # Multiple particles per pixel for visibility
+                                    for p in range(3):
+                                        # Add small random offset to target position
+                                        final_x = target_x + random.uniform(-4, 4)
+                                        final_y = target_y + random.uniform(-4, 4)
+                                        
+                                        # Calculate velocity to reach target position
+                                        # Distance from center to target
+                                        distance = math.sqrt(final_x**2 + final_y**2)
+                                        if distance > 0:
+                                            # Normalize direction and set speed
+                                            speed = distance * 3  # Speed proportional to distance
+                                            vx = (final_x / distance) * speed
+                                            vy = (final_y / distance) * speed
+                                        else:
+                                            vx = random.uniform(-10, 10)
+                                            vy = random.uniform(-10, 10)
+                                        
+                                        self.particles.append(Particle(self, [self.position[0], self.position[1]], 
+                                                                     vx, vy, self.size, 
+                                                                     random.uniform(duration - 0.3, duration + 0.3), creeper_color, gravity=0.3))
+
+
+                    
 
         self.update_particles(delta_time)
             
@@ -127,7 +236,7 @@ if __name__ == "__main__":
 
     running = True
     t = time.time()
-    firework = Firework(screen, 400, 500, Colours.RED, 5)
+    firework = Firework(screen, 400, 500, Colours.RED, 5, charges=[Charge(Type.STAR, Effects.NORMAL)])
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
