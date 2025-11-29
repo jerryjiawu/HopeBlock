@@ -86,6 +86,10 @@ class TrailParticle:
         # Calculate fade factor (1.0 at birth, 0.0 at death)
         fade_factor = 1.0 - (self.age / self.lifespan)
         
+        # Early exit if too faded to see
+        if fade_factor < 0.01:
+            return
+        
         # Calculate which image to use based on effect and fade
         if self.parent_effects == Effects.TRAIL_TWINKLE:
             # For trail+twinkle: randomize image selection for sparkly trail
@@ -98,19 +102,29 @@ class TrailParticle:
         # Get the base image
         base_image = self.particles[image_index]
         
-        # Scale the image based on size and fade factor
-        current_size = max(1, int(self.size * fade_factor))
-        scaled_image = pygame.transform.scale(base_image, (current_size, current_size))
+        # Only scale if necessary (avoid constant scaling)
+        current_size = max(2, int(self.size * fade_factor))
+        if current_size != self.size:
+            # Cache scaled images to avoid repeated scaling
+            if not hasattr(self, '_scaled_cache') or self._last_size != current_size:
+                self._scaled_cache = pygame.transform.scale(base_image, (current_size, current_size))
+                self._last_size = current_size
+            scaled_image = self._scaled_cache
+        else:
+            scaled_image = base_image
         
-        # Apply transparency
+        # Apply transparency using blend mode for better performance
         alpha = int(255 * fade_factor * fade_factor)  # Quadratic fade for more dramatic effect
-        temp_surface = scaled_image.copy()
-        temp_surface.set_alpha(alpha)
+        if alpha < 255:
+            # Use a more efficient alpha blending method
+            temp_surface = scaled_image.copy()
+            temp_surface.set_alpha(alpha)
+            scaled_image = temp_surface
         
         # Center the scaled image on the original position
         offset_x = current_size // 2
         offset_y = current_size // 2
-        screen.blit(temp_surface, (int(self.position[0] - offset_x), int(self.position[1] - offset_y)))
+        screen.blit(scaled_image, (int(self.position[0] - offset_x), int(self.position[1] - offset_y)))
 
 class Particle:
     def __init__(self, parent, position, vx, vy, size, lifespan, color=Colours.WHITE, gravity=0.1, effects=Effects.NORMAL):
@@ -137,49 +151,57 @@ class Particle:
                 self.particles.append(particle_copy)
     
     def update(self, delta_time):
-        self.velocity[1] += self.gravity * delta_time
+        # Physics update with proper delta time scaling
+        self.velocity[1] += self.gravity * delta_time * 60  # Scale gravity for consistent behavior
         self.position[0] += self.velocity[0] * delta_time
         self.position[1] += self.velocity[1] * delta_time
 
-        damping_factor = 0.95 ** (delta_time * 60)
+        # Frame-rate independent damping
+        damping_factor = 0.98 ** (delta_time * 60)
         self.velocity[0] *= damping_factor
         self.velocity[1] *= damping_factor
 
         # Handle trail effect - spawn independent trail particles
         if self.effects == Effects.TRAIL or self.effects == Effects.TRAIL_TWINKLE:
             self.trail_spawn_timer += delta_time
-            # Spawn a new trail particle every few frames
-            if self.trail_spawn_timer >= 0.01:  # Spawn every 0.01 seconds (100 FPS)
-                trail_lifespan = 0.15  # Trail particles last 0.15 seconds (much shorter)
-                trail_particle = TrailParticle(self.position, trail_lifespan, self.color, self.particles if self.particles else particles, self.size, self.effects)
+            # Adaptive trail spawn rate based on velocity for better performance
+            velocity_magnitude = math.sqrt(self.velocity[0]**2 + self.velocity[1]**2)
+            spawn_interval = max(0.008, min(0.02, 0.01 + velocity_magnitude * 0.00001))
+            
+            if self.trail_spawn_timer >= spawn_interval:
+                trail_lifespan = 0.12  # Slightly shorter for performance
+                trail_particle = TrailParticle(self.position.copy(), trail_lifespan, self.color, self.particles if self.particles else particles, self.size, self.effects)
                 self.trail_particles.append(trail_particle)
                 self.trail_spawn_timer = 0
             
-            # Update and remove expired trail particles
-            self.trail_particles = [tp for tp in self.trail_particles if tp.update(delta_time)]
+            # Efficiently update and remove expired trail particles
+            alive_trails = []
+            for tp in self.trail_particles:
+                if tp.update(delta_time):
+                    alive_trails.append(tp)
+            self.trail_particles = alive_trails
 
         self.age += delta_time
-        self.draw()
 
+    def is_expired(self):
+        return self.age >= self.lifespan
+    
     def draw(self):
-        if self.age >= self.lifespan:
-            self.parent.particles.remove(self)
-            return
-
         particle_images = self.particles if self.particles else particles
         
-        # Handle trail effect - draw all independent trail particles
+        # Handle trail effect - draw all independent trail particles first (background)
         if self.effects == Effects.TRAIL or self.effects == Effects.TRAIL_TWINKLE:
             for trail_particle in self.trail_particles:
                 trail_particle.draw(self.screen)
         
-        # Draw main particle
+        # Draw main particle (foreground)
         if self.effects == Effects.TWINKLE or self.effects == Effects.TRAIL_TWINKLE:
             # Twinkle: randomize the displayed image
             image_index = random.randint(0, len(particle_images) - 1)
         else:
-            # Normal: age-based image selection
-            image_index = int(self.age / self.lifespan * (len(particle_images) - 1))
+            # Normal: age-based image selection with bounds checking
+            age_ratio = min(1.0, self.age / self.lifespan)
+            image_index = int(age_ratio * (len(particle_images) - 1))
         
         self.screen.blit(particle_images[image_index], (int(self.position[0]), int(self.position[1])))
 
@@ -198,14 +220,27 @@ class Firework:
         self.has_exploded = False
 
     def update_particles(self, delta_time):
+        # More efficient particle update and cleanup
+        alive_particles = []
         for particle in self.particles:
             particle.update(delta_time)
+            if not particle.is_expired():
+                alive_particles.append(particle)
+        self.particles = alive_particles
+    
+    def draw_particles(self):
+        # Separate draw call for better performance
+        for particle in self.particles:
+            particle.draw()
 
     def update(self, delta_time):
+        # Frame-rate independent rocket movement
         self.position[1] -= delta_time * 300
+        
         if self.age < self.duration:
             self.screen.blit(rocket, (int(self.position[0]), int(self.position[1])))
-            if random.randint(0, 100) == 0:
+            # Frame-rate independent particle spawning for rocket trail
+            if random.random() < delta_time * 30:  # Adaptive spawn rate based on delta time
                 self.particles.append(Particle(self, [self.position[0], self.position[1] + 16], random.uniform(-40, 40), random.uniform(-10, 0), self.size, 0.5, Colours.WHITE))
             self.age += delta_time
         else:
@@ -215,21 +250,23 @@ class Firework:
                 duration = 1
                 for charge in self.charges:
                     if charge.type == Type.NORMAL or charge.type == Type.FIRE_CHARGE or charge.type == Type.BURST:
+                        speed_multiplier = 1.0
                         if charge.type == Type.NORMAL:
                             amount = 100
                             duration = 1
                         elif charge.type == Type.FIRE_CHARGE:
-                            amount = 150
+                            amount = 200
                             duration = 1.5
+                            speed_multiplier = 1.5
                         for i in range(amount):
                             angle = random.uniform(0, 2 * 3.14159)
-                            speed = random.uniform(100, 250)
+                            speed = random.uniform(50, 250) * speed_multiplier
                             vx = speed * math.cos(angle)
                             vy = speed * math.sin(angle)
                             self.particles.append(Particle(self, [self.position[0], self.position[1]], vx, vy, self.size, random.uniform(duration - 0.5, duration + 0.5), charge.color, gravity=1, effects=charge.effects))
                     elif charge.type == Type.STAR:
                         # Create a 5-pointed star outline
-                        duration = 0.3
+                        duration = 1
                         star_size = 80  # Size of the star
                         
                         # Generate star outline points
@@ -266,7 +303,7 @@ class Firework:
                                 # Calculate velocity to reach target position
                                 distance = math.sqrt(target_x**2 + target_y**2)
                                 if distance > 0:
-                                    speed = distance * 8  # Speed proportional to distance
+                                    speed = distance * 4  # Speed proportional to distance
                                     vx = (target_x / distance) * speed
                                     vy = (target_y / distance) * speed
                                 else:
@@ -295,7 +332,7 @@ class Firework:
      
                         ]
                         
-                        duration = 0.3
+                        duration = 1
                         creeper_color = charge.color
                         scale_factor = 12
 
@@ -319,7 +356,7 @@ class Firework:
                                         distance = math.sqrt(final_x**2 + final_y**2)
                                         if distance > 0:
                                             # Normalize direction and set speed
-                                            speed = distance * 8  # Speed proportional to distance
+                                            speed = distance * 4  # Speed proportional to distance
                                             vx = (final_x / distance) * speed
                                             vy = (final_y / distance) * speed
                                         else:
@@ -340,19 +377,24 @@ class Firework:
 if __name__ == "__main__":
     screen = pygame.display.set_mode((800, 600))
     pygame.display.set_caption("Firework Simulator")
+    clock = pygame.time.Clock()
 
     running = True
-    t = time.time()
-    firework = Firework(screen, 400, 500, 5, charges=[Star(Type.NORMAL, Effects.TWINKLE, Colours.WHITE), Star(Type.CREEPER, Effects.TWINKLE, Colours.RED)])
+    firework = Firework(screen, 400, 500, 5, charges=[Star(Type.FIRE_CHARGE, Effects.NORMAL, Colours.WHITE), Star(Type.STAR, Effects.TWINKLE, Colours.RED), CREEPER:=Star(Type.CREEPER, Effects.TRAIL, Colours.GREEN)])
+    
     while running:
+        # Cap delta time to prevent large jumps during lag
+        delta_time = min(clock.tick(60) / 1000.0, 1/30)  # Max 30 FPS minimum, target 60 FPS
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
 
         screen.fill((0, 0, 0))
 
-        firework.update(time.time() - t)
-        t = time.time()
+        # Update and draw separately for better performance
+        firework.update(delta_time)
+        firework.draw_particles()
 
         pygame.display.flip()
 
