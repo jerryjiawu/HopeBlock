@@ -375,12 +375,12 @@ class Firework:
         
 
 if __name__ == "__main__":
-    screen = pygame.display.set_mode((800, 600))
+    screen = pygame.display.set_mode((800, 800))
     pygame.display.set_caption("Firework Simulator")
     clock = pygame.time.Clock()
 
     running = True
-    firework = Firework(screen, 400, 500, 5, charges=[Star(Type.FIRE_CHARGE, Effects.NORMAL, Colours.WHITE), Star(Type.STAR, Effects.TWINKLE, Colours.RED), CREEPER:=Star(Type.CREEPER, Effects.TRAIL, Colours.GREEN)])
+    firework = Firework(screen, 400, 700, 5, charges=[Star(Type.FIRE_CHARGE, Effects.NORMAL, Colours.WHITE), Star(Type.STAR, Effects.TWINKLE, Colours.RED), CREEPER:=Star(Type.CREEPER, Effects.TRAIL, Colours.GREEN)])
     
     while running:
         # Cap delta time to prevent large jumps during lag
