@@ -716,7 +716,7 @@
                 const effectNames = ['Normal', 'Trail', 'Twinkle', 'Trail + Twinkle'];
                 
                 chargeDiv.innerHTML = `
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <div>
                             <strong>${typeNames[charge.type]}</strong><br>
                             <small>Effect: ${effectNames[charge.effects]}</small>
@@ -772,12 +772,12 @@
                 if (currentFirework.particles.length > 0 || !currentFirework.hasExploded) {
                     animationId = requestAnimationFrame(animate);
                 } else {
+                    // Clean up and stop animation
                     animationId = null;
+                    currentFirework = null;
                     // Clear canvas completely when done
-                    setTimeout(() => {
-                        ctx.fillStyle = 'rgba(0, 4, 40, 1)';
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    }, 1000);
+                    ctx.fillStyle = 'rgba(0, 4, 40, 1)';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
                 }
             }
         }
