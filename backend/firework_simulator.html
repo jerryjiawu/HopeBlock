@@ -487,7 +487,7 @@
                 this.position = [x, y];
                 this.originalY = y;
                 this.size = size;
-                this.duration = 1.3;
+                this.duration = 1.60;
                 this.particles = [];
                 this.charges = charges;
                 this.age = 0;
@@ -560,8 +560,22 @@
                         }
 
                         for (let i = 0; i < amount; i++) {
-                            const angle = Math.random() * 2 * Math.PI;
-                            const speed = (Math.random() * 200 + 100) * speedMultiplier;
+                            let angle;
+                            
+                            if (charge.type === Type.BURST) {
+                                // Burst: narrow 60-degree cone pointing upward
+                                const coneAngle = Math.PI / 3; // 60 degrees in radians
+                                const baseAngle = -Math.PI / 2; // Point straight up (-90 degrees)
+                                angle = baseAngle + (Math.random() - 0.5) * coneAngle;
+                            } else {
+                                // Normal and Fire Charge: full circle
+                                angle = Math.random() * 2 * Math.PI;
+                            }
+                            
+                            let speed = (Math.random() * 200 + 100) * speedMultiplier;
+                            if (charge.type === Type.BURST) {
+                                speed *= 2.5; // Extra velocity boost for burst fireworks
+                            }
                             const vx = speed * Math.cos(angle);
                             const vy = speed * Math.sin(angle);
 
