@@ -25,6 +25,7 @@
             background: #111;
             color: white;
             font-family: 'CustomFont', monospace, Arial, sans-serif;
+            position: relative;
         }
         
         .container {
@@ -38,6 +39,67 @@
             padding: 20px;
             height: fit-content;
             box-shadow: 4px 4px 0px #000;
+        }
+        
+        .price-summary {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #2a2a2a;
+            border: 2px solid #4CAF50;
+            padding: 15px;
+            width: 280px;
+            box-shadow: 4px 4px 0px #000;
+            z-index: 1000;
+        }
+        
+        .price-line {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            font-size: 12px;
+        }
+        
+        .total-line {
+            border-top: 1px solid #4CAF50;
+            padding-top: 8px;
+            margin-top: 8px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .quantity-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        
+        .quantity-btn {
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .quantity-display {
+            font-size: 16px;
+            font-weight: bold;
+            min-width: 20px;
+            text-align: center;
+        }
+        
+        .checkout-btn {
+            background: #2196F3;
+            font-size: 16px;
+            padding: 12px;
+            width: 100%;
+            margin: 10px 0;
+        }
+        
+        .checkout-btn:hover {
+            background: #1976D2;
         }
         
         .canvas-container {
@@ -129,6 +191,26 @@
     </style>
 </head>
 <body>
+    <div class="price-summary">
+        <h3 style="margin: 0 0 10px 0; color: #4CAF50;">Price Summary</h3>
+        <div id="priceBreakdown"></div>
+        <div class="price-line total-line">
+            <span>Total per firework:</span>
+            <span id="totalPrice">$0.00</span>
+        </div>
+        <div class="quantity-controls">
+            <span>Quantity:</span>
+            <button class="quantity-btn" onclick="changeQuantity(-1)">-</button>
+            <span class="quantity-display" id="quantity">1</span>
+            <button class="quantity-btn" onclick="changeQuantity(1)">+</button>
+        </div>
+        <div class="price-line total-line">
+            <span>Total Cost:</span>
+            <span id="finalTotal">$0.00</span>
+        </div>
+        <button class="checkout-btn" onclick="checkout()">💳 Checkout</button>
+    </div>
+    
     <div class="container">
         <div class="controls">
             <h2>Firework Designer</h2>
@@ -171,7 +253,7 @@
                 <button onclick="addCharge()">Add Charge</button>
             </div>
             
-            <button class="launch-btn" onclick="launchFirework()">🎆 Launch Firework!</button>
+            <button class="launch-btn" onclick="launchFirework()">Launch Firework!</button>
             
             <h3>Current Charges</h3>
             <div id="chargesList"></div>
@@ -248,6 +330,35 @@
         let particleImages = [];
         let rocketImage = null;
         let imagesLoaded = false;
+        let quantity = 1;
+        
+        // Pricing structure
+        const pricing = {
+            base: 0.20, // Base firework cost
+            types: {
+                [Type.NORMAL]: 0.00,
+                [Type.FIRE_CHARGE]: 0.05,
+                [Type.STAR]: 0.08,
+                [Type.CREEPER]: 0.10,
+                [Type.BURST]: 0.07
+            },
+            effects: {
+                [Effects.NORMAL]: 0.00,
+                [Effects.TRAIL]: 0.03,
+                [Effects.TWINKLE]: 0.04,
+                [Effects.TRAIL_TWINKLE]: 0.06
+            },
+            colors: {
+                // Standard colors (no extra charge)
+                "#B02E26": 0.00, "#F9801D": 0.00, "#FED83D": 0.00, "#80C71F": 0.00,
+                "#5E7C16": 0.00, "#169C9C": 0.00, "#3AB3DA": 0.00, "#3C44AA": 0.00,
+                "#8932B8": 0.00, "#F9FFFE": 0.00, "#9D9D97": 0.00, "#474F52": 0.00,
+                "#1D1D21": 0.00, "#835432": 0.00,
+                // Premium colors
+                "#C74EBD": 0.02, // Magenta
+                "#F38BAA": 0.02  // Pink
+            }
+        };
 
         // Load actual asset images
         function loadAssetImages() {
@@ -719,6 +830,7 @@
 
             if (charges.length === 0) {
                 chargesList.innerHTML = '<p style="color: #888; font-style: italic;">No charges added yet</p>';
+                updatePriceSummary();
                 return;
             }
 
@@ -729,11 +841,14 @@
                 const typeNames = ['Normal', 'Fire Charge', 'Star', 'Creeper', 'Burst'];
                 const effectNames = ['Normal', 'Trail', 'Twinkle', 'Trail + Twinkle'];
                 
+                const chargeCost = pricing.types[charge.type] + pricing.effects[charge.effects] + pricing.colors[charge.color];
+                
                 chargeDiv.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <div>
                             <strong>${typeNames[charge.type]}</strong><br>
-                            <small>Effect: ${effectNames[charge.effects]}</small>
+                            <small>Effect: ${effectNames[charge.effects]}</small><br>
+                            <small style="color: #4CAF50;">+$${chargeCost.toFixed(2)}</small>
                         </div>
                         <div style="width: 30px; height: 30px; background: ${charge.color}; border-radius: 50%; border: 2px solid white;"></div>
                     </div>
@@ -742,6 +857,70 @@
                 
                 chargesList.appendChild(chargeDiv);
             });
+            
+            updatePriceSummary();
+        }
+        
+        function updatePriceSummary() {
+            const priceBreakdown = document.getElementById('priceBreakdown');
+            const totalPriceElement = document.getElementById('totalPrice');
+            const finalTotalElement = document.getElementById('finalTotal');
+            
+            let breakdown = '';
+            let total = pricing.base;
+            
+            // Base cost
+            breakdown += `<div class="price-line"><span>Base Firework:</span><span>$${pricing.base.toFixed(2)}</span></div>`;
+            
+            // Charge costs
+            charges.forEach((charge, index) => {
+                const typeNames = ['Normal', 'Fire Charge', 'Star', 'Creeper', 'Burst'];
+                const effectNames = ['Normal', 'Trail', 'Twinkle', 'Trail + Twinkle'];
+                
+                const typeCost = pricing.types[charge.type];
+                const effectCost = pricing.effects[charge.effects];
+                const colorCost = pricing.colors[charge.color];
+                const chargeCost = typeCost + effectCost + colorCost;
+                
+                if (chargeCost > 0) {
+                    breakdown += `<div class="price-line"><span>Charge ${index + 1} (${typeNames[charge.type]}):</span><span>+$${chargeCost.toFixed(2)}</span></div>`;
+                }
+                total += chargeCost;
+            });
+            
+            priceBreakdown.innerHTML = breakdown;
+            totalPriceElement.textContent = `$${total.toFixed(2)}`;
+            finalTotalElement.textContent = `$${(total * quantity).toFixed(2)}`;
+        }
+        
+        function changeQuantity(delta) {
+            quantity = Math.max(1, quantity + delta);
+            document.getElementById('quantity').textContent = quantity;
+            updatePriceSummary();
+        }
+        
+        function checkout() {
+            if (charges.length === 0) {
+                alert('Please add at least one charge before checkout!');
+                return;
+            }
+            
+            const totalPrice = parseFloat(document.getElementById('finalTotal').textContent.replace('$', ''));
+            const typeNames = ['Normal', 'Fire Charge', 'Star', 'Creeper', 'Burst'];
+            const effectNames = ['Normal', 'Trail', 'Twinkle', 'Trail + Twinkle'];
+            
+            let orderSummary = `🎆 FIREWORK ORDER SUMMARY 🎆\n\n`;
+            orderSummary += `Quantity: ${quantity} firework${quantity > 1 ? 's' : ''}\n`;
+            orderSummary += `Total: $${totalPrice.toFixed(2)}\n\n`;
+            orderSummary += `Each firework contains:\n`;
+            
+            charges.forEach((charge, index) => {
+                const colorName = Object.keys(Colours).find(key => Colours[key] === charge.color) || 'Custom';
+                orderSummary += `• ${typeNames[charge.type]} charge (${effectNames[charge.effects]} effect) in ${colorName}\n`;
+            });
+            
+            orderSummary += `\nThank you for your order! 🎉`;
+            alert(orderSummary);
         }
 
         function launchFirework() {
